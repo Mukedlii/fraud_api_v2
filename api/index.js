@@ -3,7 +3,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
-import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 
 const app = express();
 app.use(express.json());
@@ -24,8 +24,7 @@ if (!CDP_KEY_ID || !CDP_KEY_SECRET) throw new Error("CDP_API_KEY_ID and CDP_API_
 const facilitatorConfig = createFacilitatorConfig(CDP_KEY_ID, CDP_KEY_SECRET);
 const facilitator = new HTTPFacilitatorClient(facilitatorConfig);
 const resourceServer = new x402ResourceServer(facilitator)
-  .register("eip155:8453", new ExactEvmScheme())
-  .registerExtension(bazaarResourceServerExtension);
+  .register("eip155:8453", new ExactEvmScheme());
 
 const makeAccepts = (price) => ({
   scheme: "exact",
