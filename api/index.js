@@ -3,6 +3,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { createFacilitatorConfig } from "@coinbase/x402";
+import { declareDiscoveryExtension, bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 
 const app = express();
 app.use(express.json());
@@ -23,7 +24,8 @@ if (!CDP_KEY_ID || !CDP_KEY_SECRET) throw new Error("CDP_API_KEY_ID and CDP_API_
 const facilitatorConfig = createFacilitatorConfig(CDP_KEY_ID, CDP_KEY_SECRET);
 const facilitatorClient = new HTTPFacilitatorClient(facilitatorConfig);
 const resourceServer = new x402ResourceServer(facilitatorClient)
-  .register("eip155:8453", new ExactEvmScheme());
+  .register("eip155:8453", new ExactEvmScheme())
+  .registerExtension(bazaarResourceServerExtension);
 
 const makeAccepts = (price) => ({
   scheme: "exact",
@@ -37,11 +39,57 @@ const routes = {
     accepts: makeAccepts("$0.003"),
     description: "Multi-source IP fraud score (0-100) combining ML model + AbuseIPDB + VPN/proxy/TOR detection.",
     mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        method: "GET",
+        input: { ip: "8.8.8.8" },
+        inputSchema: {
+          properties: {
+            ip: { type: "string", description: "IPv4 or IPv6 address to analyze" },
+          },
+          required: ["ip"],
+        },
+        output: {
+          example: {
+            ip: "8.8.8.8",
+            fraudScore: 2,
+            riskLevel: "safe",
+            isVpnOrProxy: false,
+            isTor: false,
+            abuseConfidence: 0,
+            totalReports: 0,
+            geo: { country: "United States", city: "Ashburn", isp: "Google LLC" },
+          },
+        },
+      }),
+    },
   },
   "GET /batch": {
     accepts: makeAccepts("$0.01"),
     description: "Batch fraud analysis for up to 5 IP addresses.",
     mimeType: "application/json",
+    extensions: {
+      ...declareDiscoveryExtension({
+        method: "GET",
+        input: { ips: "8.8.8.8,1.1.1.1,9.9.9.9" },
+        inputSchema: {
+          properties: {
+            ips: { type: "string", description: "Comma-separated list of up to 5 IP addresses" },
+          },
+          required: ["ips"],
+        },
+        output: {
+          example: {
+            count: 3,
+            results: {
+              "8.8.8.8": { fraudScore: 2, riskLevel: "safe", isVpnOrProxy: false },
+              "1.1.1.1": { fraudScore: 0, riskLevel: "safe", isVpnOrProxy: false },
+              "185.220.101.1": { fraudScore: 100, riskLevel: "critical", isVpnOrProxy: true, isTor: true },
+            },
+          },
+        },
+      }),
+    },
   },
 };
 
@@ -154,7 +202,6 @@ app.get("/", (_req, res) => {
     version: "2.0.0",
     description: "Multi-source IP fraud scoring via x402 micropayments.",
     payment: "USDC on Base mainnet (eip155:8453)",
-    sources: ["GetIPIntel (ML fraud model)", "AbuseIPDB (community reports)", "ip-api.com (geolocation)"],
     endpoints: [
       { path: "GET /score", price: "$0.003", params: "?ip=8.8.8.8" },
       { path: "GET /batch", price: "$0.01", params: "?ips=8.8.8.8,1.1.1.1" },
@@ -175,7 +222,7 @@ app.get("/.well-known/x402", (_req, res) => {
       {
         path: "/score",
         method: "GET",
-        description: "Combined fraud score for a single IP from 2 independent sources.",
+        description: "Combined fraud score for a single IP.",
         params: "?ip=8.8.8.8",
         price: { amount: "0.003", currency: "USDC" },
       },
